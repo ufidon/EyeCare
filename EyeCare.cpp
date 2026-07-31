@@ -13,12 +13,13 @@
 #include <shlobj.h>      // SHGetSpecialFolderPath
 #include <objbase.h>     // CoInitialize, CoCreateInstance
 #include <shlguid.h>     // IID_IShellLink, CLSID_ShellLink
-#include <cstdio>
-#include <cstdlib>
+#include <shlwapi.h>
+#include <strsafe.h>
 
 #pragma comment(lib, "comctl32.lib")
 #pragma comment(lib, "shell32.lib")
 #pragma comment(lib, "ole32.lib")   // COM 需要
+#pragma comment(lib, "shlwapi.lib")
 #pragma comment(linker,"\"/manifestdependency:type='win32' \
 name='Microsoft.Windows.Common-Controls' version='6.0.0.0' \
 processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
@@ -83,17 +84,16 @@ int GetRemainingSeconds() {
 void FormatTime(int seconds, wchar_t* buffer, size_t bufsize) {
     int mins = seconds / 60;
     int secs = seconds % 60;
-    swprintf_s(buffer, bufsize, L"%02d:%02d", mins, secs);
+    StringCchPrintfW(buffer, bufsize, L"%02d:%02d", mins, secs);
 }
 
 // --------------------- INI 文件操作 ---------------------
 void GetIniPath(wchar_t* buf, size_t size) {
     wchar_t exePath[MAX_PATH];
     GetModuleFileNameW(NULL, exePath, MAX_PATH);
-    wcscpy_s(buf, size, exePath);
-    wchar_t* p = wcsrchr(buf, L'.');
-    if (p) *p = L'\0';
-    wcscat_s(buf, size, L".ini");
+    StringCchCopyW(buf, size, exePath);
+    PathRemoveExtensionW(buf);
+    StringCchCatW(buf, size, L".ini");
 }
 
 void LoadSettings() {
@@ -103,22 +103,22 @@ void LoadSettings() {
 
     // 工作分钟
     GetPrivateProfileStringW(INI_SECTION, L"WorkMinutes", L"", buf, 16, iniPath);
-    if (buf[0]) g_workMinutes = _wtoi(buf);
+    if (buf[0]) g_workMinutes = StrToIntW(buf);
     else g_workMinutes = DEFAULT_WORK_MIN;
 
     // 休息分钟
     GetPrivateProfileStringW(INI_SECTION, L"RestMinutes", L"", buf, 16, iniPath);
-    if (buf[0]) g_restMinutes = _wtoi(buf);
+    if (buf[0]) g_restMinutes = StrToIntW(buf);
     else g_restMinutes = DEFAULT_REST_MIN;
 
     // 锁屏模式
     GetPrivateProfileStringW(INI_SECTION, L"LockMode", L"0", buf, 16, iniPath);
-    g_lockMode = _wtoi(buf);
+    g_lockMode = StrToIntW(buf);
     if (g_lockMode < 0 || g_lockMode > 1) g_lockMode = LOCK_HARD;
 
     // 开机启动
     GetPrivateProfileStringW(INI_SECTION, L"AutoStart", L"0", buf, 16, iniPath);
-    g_bAutoStart = (_wtoi(buf) == 1);
+    g_bAutoStart = (StrToIntW(buf) == 1);
 }
 
 void SaveSettings() {
@@ -126,16 +126,16 @@ void SaveSettings() {
     GetIniPath(iniPath, MAX_PATH);
     wchar_t buf[16];
 
-    wsprintf(buf, L"%d", g_workMinutes);
+    StringCchPrintfW(buf, 16, L"%d", g_workMinutes);
     WritePrivateProfileStringW(INI_SECTION, L"WorkMinutes", buf, iniPath);
 
-    wsprintf(buf, L"%d", g_restMinutes);
+    StringCchPrintfW(buf, 16, L"%d", g_restMinutes);
     WritePrivateProfileStringW(INI_SECTION, L"RestMinutes", buf, iniPath);
 
-    wsprintf(buf, L"%d", g_lockMode);
+    StringCchPrintfW(buf, 16, L"%d", g_lockMode);
     WritePrivateProfileStringW(INI_SECTION, L"LockMode", buf, iniPath);
 
-    wsprintf(buf, L"%d", g_bAutoStart ? 1 : 0);
+    StringCchPrintfW(buf, 16, L"%d", g_bAutoStart ? 1 : 0);
     WritePrivateProfileStringW(INI_SECTION, L"AutoStart", buf, iniPath);
 }
 
@@ -146,7 +146,7 @@ bool CreateStartupShortcut(bool enable) {
         return false;
 
     WCHAR shortcutPath[MAX_PATH];
-    swprintf_s(shortcutPath, L"%s\\EyeCare.lnk", startupPath);
+    StringCchPrintfW(shortcutPath, MAX_PATH, L"%s\\EyeCare.lnk", startupPath);
 
     if (enable) {
         HRESULT hr = CoInitialize(NULL);
@@ -201,7 +201,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
     g_nid.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
     g_nid.uCallbackMessage = WM_TRAYICON;
     g_nid.hIcon = LoadIcon(NULL, IDI_APPLICATION);
-    wcscpy_s(g_nid.szTip, 128, L"护眼助手 (工作中)");
+    StringCchCopyW(g_nid.szTip, 128, L"护眼助手 (工作中)");
     Shell_NotifyIcon(NIM_ADD, &g_nid);
 
     // 如果设置了开机启动，但快捷方式不存在，这里不自动创建，由用户通过设置控制
@@ -297,7 +297,7 @@ void SwitchToWork() {
     g_startTick = GetTickCount();
     SetTimer(g_hwnd, ID_TIMER_MAIN, 1000, NULL);
     UpdateTrayTip();
-    wcscpy_s(g_nid.szTip, 128, L"护眼助手 (工作中)");
+    StringCchCopyW(g_nid.szTip, 128, L"护眼助手 (工作中)");
     Shell_NotifyIcon(NIM_MODIFY, &g_nid);
 }
 
@@ -332,17 +332,20 @@ void SwitchToRest() {
                                     dwStyle, 0, 0, screenW, screenH,
                                     NULL, NULL, hInst, NULL);
     } else {
-        dwExStyle |= WS_EX_TRANSPARENT;
+        dwExStyle |= WS_EX_TRANSPARENT | WS_EX_LAYERED;
         int winW = 400, winH = 200;
         int x = (screenW - winW) / 2;
         int y = (screenH - winH) / 2;
         g_hwndRest = CreateWindowEx(dwExStyle, L"RestWindowClass", L"休息提醒",
                                     dwStyle, x, y, winW, winH,
                                     NULL, NULL, hInst, NULL);
+        if (g_hwndRest) {
+            SetLayeredWindowAttributes(g_hwndRest, 0, (BYTE)180, LWA_ALPHA);
+        }
     }
 
     if (g_hwndRest) {
-        g_hwndRestStatic = CreateWindow(L"STATIC", L"",
+            g_hwndRestStatic = CreateWindowEx(WS_EX_TRANSPARENT, L"STATIC", L"",
                                         WS_CHILD | WS_VISIBLE | SS_CENTER | SS_CENTERIMAGE,
                                         0, 0, 400, 100,
                                         g_hwndRest, NULL, hInst, NULL);
@@ -361,7 +364,7 @@ void SwitchToRest() {
         int remaining = GetRemainingSeconds();
         FormatTime(remaining, buf, 64);
         wchar_t display[128];
-        swprintf_s(display, L"休息倒计时\n%s", buf);
+        StringCchPrintfW(display, 128, L"休息倒计时\n%s", buf);
         SetWindowText(g_hwndRestStatic, display);
 
         // 定时器绑定到休息窗口
@@ -370,7 +373,7 @@ void SwitchToRest() {
     }
 
     UpdateTrayTip();
-    wcscpy_s(g_nid.szTip, 128, L"护眼助手 (休息中)");
+    StringCchCopyW(g_nid.szTip, 128, L"护眼助手 (休息中)");
     Shell_NotifyIcon(NIM_MODIFY, &g_nid);
 }
 
@@ -379,6 +382,9 @@ LRESULT CALLBACK RestWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
     switch (msg) {
         case WM_NCHITTEST:
             if (g_lockMode == LOCK_SOFT) {
+                if ((GetAsyncKeyState(VK_MENU) & 0x8000) != 0) {
+                    return HTCAPTION;
+                }
                 return HTTRANSPARENT;
             }
             return DefWindowProc(hwnd, msg, wParam, lParam);
@@ -389,7 +395,7 @@ LRESULT CALLBACK RestWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
                 wchar_t buf[64];
                 FormatTime(remaining, buf, 64);
                 wchar_t display[128];
-                swprintf_s(display, L"休息倒计时\n%s", buf);
+                StringCchPrintfW(display, 128, L"休息倒计时\n%s", buf);
                 if (g_hwndRestStatic) SetWindowText(g_hwndRestStatic, display);
                 UpdateTrayTip();
                 if (remaining <= 0) {
@@ -445,10 +451,10 @@ void UpdateTrayTip() {
     wchar_t timeStr[16];
     FormatTime(remaining, timeStr, 16);
     if (g_state == STATE_WORK)
-        swprintf_s(buf, L"护眼助手 - 距离休息还有 %s", timeStr);
+        StringCchPrintfW(buf, 128, L"护眼助手 - 距离休息还有 %s", timeStr);
     else
-        swprintf_s(buf, L"护眼助手 - 休息倒计时 %s", timeStr);
-    wcscpy_s(g_nid.szTip, 128, buf);
+        StringCchPrintfW(buf, 128, L"护眼助手 - 休息倒计时 %s", timeStr);
+    StringCchCopyW(g_nid.szTip, 128, buf);
     Shell_NotifyIcon(NIM_MODIFY, &g_nid);
 }
 
