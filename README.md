@@ -29,6 +29,12 @@
 
 ---
 
+## 下载
+
+[点击下载 v1.0.0](https://github.com/ufidon/EyeCare/releases/download/v1.0.0/EyeCare.exe)
+![Downloads](https://img.shields.io/github/downloads/ufidon/EyeCare/total.svg)
+---
+
 ## 🚀 使用指南
 
 1. **启动程序**：双击 `EyeCare.exe`，无主窗口，仅在系统托盘（右下角）显示图标。
