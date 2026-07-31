@@ -31,7 +31,7 @@
 
 ## 下载
 
-[点击下载 v1.0.0](https://github.com/ufidon/EyeCare/releases/download/v1.0.0/EyeCare.exe)
+[点击下载 v1.0.1](https://github.com/ufidon/EyeCare/releases/download/v1.0.1/EyeCare.exe)
 ![GitHub Downloads (all assets, latest release)](https://img.shields.io/github/downloads/ufidon/EyeCare/latest/total)
 
 
